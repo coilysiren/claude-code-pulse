@@ -51,12 +51,12 @@ different.
 
 ```bash
 git clone https://github.com/coilysiren/claude-code-pulse ~/projects/claude-code-pulse
-ln -s ~/projects/claude-code-pulse/statusline.py           ~/.claude/statusline.py
-ln -s ~/projects/claude-code-pulse/rollup_lib.py           ~/.claude/rollup_lib.py
+ln -sf ~/projects/claude-code-pulse/statusline.py           ~/.claude/statusline.py
+ln -sf ~/projects/claude-code-pulse/rollup_lib.py           ~/.claude/rollup_lib.py
 mkdir -p ~/.claude/hooks
-ln -s ~/projects/claude-code-pulse/hooks/summary_rollup.py ~/.claude/hooks/summary_rollup.py
-ln -s ~/projects/claude-code-pulse/hooks/fuzzy_matcher.py  ~/.claude/hooks/fuzzy_matcher.py
-ln -s ~/projects/claude-code-pulse/hooks/semantic_matcher.py ~/.claude/hooks/semantic_matcher.py
+ln -sf ~/projects/claude-code-pulse/hooks/summary_rollup.py ~/.claude/hooks/summary_rollup.py
+ln -sf ~/projects/claude-code-pulse/hooks/fuzzy_matcher.py  ~/.claude/hooks/fuzzy_matcher.py
+ln -sf ~/projects/claude-code-pulse/hooks/semantic_matcher.py ~/.claude/hooks/semantic_matcher.py
 ```
 
 Optional deps (all fall back gracefully if absent):
