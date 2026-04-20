@@ -87,6 +87,45 @@ def looks_like_summary(prompt: str) -> bool:
     return False
 
 
+RED = "\U0001F534"
+
+# Static remediation notes shown when a signal goes red. URL-verified
+# 2026-04 against code.claude.com / platform.claude.com.
+REMEDIATION = {
+    "ctx": (
+        "Context is past the 80% line — Claude Code auto-compacts soon and "
+        "instruction-following degrades above that. Use /compact with focus "
+        "instructions, /clear between unrelated tasks, move long CLAUDE.md "
+        "rules into on-demand skills, and delegate verbose operations to "
+        "subagents.\n"
+        "  Docs: https://code.claude.com/docs/en/costs#reduce-token-usage\n"
+        "  Docs: https://platform.claude.com/docs/en/docs/build-with-claude/context-windows"
+    ),
+    "cache": (
+        "Cache hit rate is under 50% — the prompt prefix is churning, so you "
+        "are paying the 1.25x cache-write penalty without amortizing it. "
+        "Stabilize CLAUDE.md, tool definitions, and system prompt; anything "
+        "that changes early in the prompt invalidates every cached block "
+        "after it.\n"
+        "  Docs: https://platform.claude.com/docs/en/docs/build-with-claude/prompt-caching"
+    ),
+    "cost": (
+        "Session cost is above $20 — on a Max-$100 plan that's a meaningful "
+        "slice of the monthly envelope. Consider /model to switch to Sonnet "
+        "for routine edits, plan mode before big implementations, and "
+        "clearing stale context between tasks.\n"
+        "  Docs: https://code.claude.com/docs/en/costs"
+    ),
+    "burn": (
+        "Burn rate is above $15/hr — usually Opus in a tight agentic loop. "
+        "Downshift to Sonnet with /model, lower extended-thinking budget "
+        "with /effort, or break work into smaller iterations that can "
+        "checkpoint.\n"
+        "  Docs: https://code.claude.com/docs/en/costs#choose-the-right-model"
+    ),
+}
+
+
 def _fmt_duration(seconds: float) -> str:
     if seconds < 60:
         return f"{int(seconds)}s"
@@ -169,6 +208,23 @@ def build_rollup(transcript_path: str, current_model_id: str) -> str:
             )
     if top_line:
         lines.append(f"Top 3 expensive turns: {top_line}")
+
+    # Append remediation notes for any red signals, deduped in a stable order.
+    red_keys: list[str] = []
+    if peak_icon == RED or cur_icon == RED:
+        red_keys.append("ctx")
+    if cache_icon == RED:
+        red_keys.append("cache")
+    if cost_icon == RED:
+        red_keys.append("cost")
+    if burn_icon == RED:
+        red_keys.append("burn")
+    if red_keys:
+        lines.append("")
+        lines.append("Red-signal remediation:")
+        for k in red_keys:
+            lines.append(f"{RED} {REMEDIATION[k]}")
+
     lines.append(
         "Use these numbers when answering; do not re-estimate from memory."
     )
