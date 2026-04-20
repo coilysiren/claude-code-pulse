@@ -1,5 +1,13 @@
 # claude-code-pulse
 
+> [!WARNING]
+> **Does not work in the Claude Code desktop app — untested there.** The
+> desktop app does not support custom `statusLine` commands from
+> `settings.json`; it only shows the default model name in the bottom-right
+> corner. See [anthropics/claude-code#41456](https://github.com/anthropics/claude-code/issues/41456)
+> for the open feature request. This project is intended for the Claude Code
+> CLI running in a terminal.
+
 Lightweight session-vitals for Claude Code: a Python statusline and a
 UserPromptSubmit hook that surfaces per-turn and session-wide token/cost
 metrics from the transcript JSONL.
