@@ -9,9 +9,10 @@ metrics from the transcript JSONL.
 **Statusline** (after every message):
 
 ```
-opus-4.7 · ctx 310k/1M (30%) (+4.2k) · turn in 4.2k out 1.1k · cache 90% hit · $0.4 session (+$0.05)
+opus-4.7 · git:main · ctx 310k/1M (30%) (+4.2k) · turn in 4.2k out 1.1k · cache 90% hit · $0.4 session (+$0.05)
 ```
 
+- `git:<branch>` — current git branch of the workspace (omitted outside repos).
 - `ctx` — current input-side tokens vs. model's context window, with delta since
   last statusline tick.
 - `turn in / out` — tokens on the most recent turn (delta, not cumulative).
@@ -30,14 +31,40 @@ assistant's reply uses real numbers instead of guessing.
 - dollars → nearest $0.10
 - tokens → 2 sig figs in k/M
 
+## Status icons
+
+Each metric is annotated 🟢 / 🟡 / 🔴 based on thresholds calibrated for personal
+(not enterprise) use, sourced from ccusage constants + Anthropic caching
+guidance + community reporting:
+
+| Metric       | 🟢 green  | 🟡 yellow    | 🔴 red    | Rationale |
+|--------------|-----------|--------------|-----------|-----------|
+| ctx usage    | <50%      | 50–80%       | >80%      | Claude Code auto-compacts ~80%; above that you're racing it. |
+| cache hit    | >80%      | 50–80%       | <50%      | Cache writes cost 1.25x, reads 0.1x → breakeven ~22%; healthy sessions post 85–95%. |
+| session cost | <$5       | $5–$20       | >$20      | Max-$100 plan ≈ $140/mo API equiv; >$20 in one session eats the envelope. |
+| burn rate    | <$5/hr    | $5–$15/hr    | >$15/hr   | Sonnet coding ≈ $2–4/hr, Opus mixed ≈ $6–12/hr; >$15/hr sustained is Opus-in-a-loop. |
+
+Thresholds live at the top of `rollup_lib.py` — edit them if your normal is
+different.
+
 ## Install
 
 ```bash
 git clone https://github.com/coilysiren/claude-code-pulse ~/projects/claude-code-pulse
-ln -s ~/projects/claude-code-pulse/statusline.py        ~/.claude/statusline.py
-ln -s ~/projects/claude-code-pulse/rollup_lib.py        ~/.claude/rollup_lib.py
+ln -s ~/projects/claude-code-pulse/statusline.py           ~/.claude/statusline.py
+ln -s ~/projects/claude-code-pulse/rollup_lib.py           ~/.claude/rollup_lib.py
 mkdir -p ~/.claude/hooks
 ln -s ~/projects/claude-code-pulse/hooks/summary_rollup.py ~/.claude/hooks/summary_rollup.py
+ln -s ~/projects/claude-code-pulse/hooks/fuzzy_matcher.py  ~/.claude/hooks/fuzzy_matcher.py
+ln -s ~/projects/claude-code-pulse/hooks/semantic_matcher.py ~/.claude/hooks/semantic_matcher.py
+```
+
+Optional deps (all fall back gracefully if absent):
+```bash
+pip install -r requirements-optional.txt  # orjson, rapidfuzz, sentence-transformers
+# or à la carte:
+pip install rapidfuzz                     # recommended — enables Tier 2 matching
+pip install orjson                        # recommended — faster JSONL parse
 ```
 
 Then add to `~/.claude/settings.json`:
@@ -75,14 +102,24 @@ Restart Claude Code. No dependencies — pure stdlib Python 3.10+.
 Hardcoded in `rollup_lib.PRICING` (per million tokens). Update if Anthropic's
 published rates change. Session cost is approximate; it is not a billing number.
 
-## Upgrading the summary matcher
+## Summary-intent matching (three tiers)
 
-`looks_like_summary()` in `hooks/summary_rollup.py` is regex-only for speed
-(the hook runs on every prompt). If you want semantic matching for phrasings
-the regex misses, the intended upgrade path is a fully-local embedding model
-via `sentence-transformers` (`all-MiniLM-L6-v2` is ~90MB, no network after
-first download). Keep the regex as a short-circuit so common phrasings stay
-zero-latency.
+`looks_like_summary()` in `hooks/summary_rollup.py` cascades through tiers,
+stopping at the first match:
+
+1. **Regex** (stdlib, instant) — covers `summarize`, `wrap up`, `recap`,
+   `rundown`, `tally`, `where are we`, etc.
+2. **Fuzzy** (`rapidfuzz`, ~1ms) — token-set ratio against reference phrases;
+   catches typos and paraphrases the regex misses. Requires `pip install
+   rapidfuzz`. Disable with `CC_PULSE_FUZZY=0`.
+3. **Semantic** (`sentence-transformers` + `all-MiniLM-L6-v2`, ~90MB, fully
+   local after first download) — catches loose paraphrases that fuzzy misses.
+   Opt-in via `CC_PULSE_SEMANTIC=1` because the ~2–3s cold start runs on every
+   invocation that reaches this tier.
+
+Short-prompt-only gate: tiers 2 and 3 only run on prompts under 80 chars, and
+tier 3 additionally requires a summary signal word, so long task prompts never
+pay the cost.
 
 ## Related work
 

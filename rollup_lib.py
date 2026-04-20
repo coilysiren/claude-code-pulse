@@ -9,6 +9,14 @@ Rounding rule: "1/10th of natural unit, 2 sig figs when >0".
 import json
 from pathlib import Path
 
+# orjson is 2-10x faster than stdlib json for parsing transcript JSONL.
+# Optional — stdlib fallback is fine for sessions under a few thousand turns.
+try:
+    import orjson  # type: ignore
+    _loads = orjson.loads  # type: ignore[assignment]
+except ImportError:
+    _loads = json.loads  # type: ignore[assignment]
+
 PRICING = {
     "claude-opus-4-7":       {"in": 15.0, "out": 75.0, "cw": 18.75, "cr": 1.5},
     "claude-opus-4-7[1m]":   {"in": 15.0, "out": 75.0, "cw": 18.75, "cr": 1.5},
@@ -51,6 +59,33 @@ def fmt_tokens(n: float) -> str:
     return sign + s
 
 
+# Status thresholds for personal/hobby use, sourced from community consensus
+# (ccusage constants + Anthropic caching guidance + Reddit/HN reporting).
+# See README for rationale. Higher = worse unless noted.
+THRESH_CTX_PCT      = (50, 80)   # yellow at 50%, red at 80% (auto-compact zone)
+THRESH_CACHE_PCT    = (80, 50)   # hi_good: yellow below 80%, red below 50%
+THRESH_COST_USD     = (5, 20)    # $ per session
+THRESH_BURN_USD_HR  = (5, 15)    # $ per hour sustained
+
+
+def icon_hi_bad(value: float, yellow_at: float, red_at: float) -> str:
+    """Higher value = worse. yellow_at < red_at."""
+    if value >= red_at:
+        return "\U0001F534"  # red
+    if value >= yellow_at:
+        return "\U0001F7E1"  # yellow
+    return "\U0001F7E2"      # green
+
+
+def icon_hi_good(value: float, yellow_below: float, red_below: float) -> str:
+    """Higher value = better. red_below < yellow_below."""
+    if value < red_below:
+        return "\U0001F534"
+    if value < yellow_below:
+        return "\U0001F7E1"
+    return "\U0001F7E2"
+
+
 def fmt_pct(frac_or_pct: float, already_pct: bool = False) -> str:
     pct = frac_or_pct if already_pct else frac_or_pct * 100
     return f"{int(round(pct / 10.0) * 10)}%"
@@ -83,7 +118,7 @@ def parse_transcript(path: str) -> list[dict]:
         with open(path) as f:
             for line in f:
                 try:
-                    obj = json.loads(line)
+                    obj = _loads(line)
                 except Exception:
                     continue
                 if obj.get("type") != "assistant":
@@ -122,6 +157,40 @@ def total_cost(turns: list[dict]) -> float:
 def context_used(turn: dict) -> int:
     """Tokens currently occupying context = all input-side tokens on this turn."""
     return turn["input"] + turn["cache_create"] + turn["cache_read"]
+
+
+def session_duration_seconds(turns: list[dict]) -> float:
+    """Return seconds between first and last assistant-turn timestamp, or 0."""
+    from datetime import datetime
+    ts: list[str] = [s for t in turns if (s := t.get("ts"))]
+    if len(ts) < 2:
+        return 0.0
+    try:
+        parsed = [datetime.fromisoformat(s.replace("Z", "+00:00")) for s in ts]
+        return (max(parsed) - min(parsed)).total_seconds()
+    except Exception:
+        return 0.0
+
+
+def git_branch(cwd: str) -> str | None:
+    """Fast git-branch lookup without subprocess. Walks up to find .git/HEAD."""
+    if not cwd:
+        return None
+    p = Path(cwd)
+    for _ in range(20):
+        head = p / ".git" / "HEAD"
+        if head.is_file():
+            try:
+                content = head.read_text().strip()
+            except Exception:
+                return None
+            if content.startswith("ref: refs/heads/"):
+                return content[len("ref: refs/heads/"):]
+            return content[:7]  # detached HEAD -> short SHA
+        if p == p.parent:
+            return None
+        p = p.parent
+    return None
 
 
 def load_state(path: Path) -> dict:

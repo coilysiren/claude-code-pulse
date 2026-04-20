@@ -6,8 +6,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path.home() / ".claude"))
 from rollup_lib import (  # noqa: E402
-    CONTEXT_WINDOWS, fmt_cost, fmt_cost_diff, fmt_pct, fmt_token_diff,
-    fmt_tokens, context_used, load_state, parse_transcript, save_state, total_cost,
+    CONTEXT_WINDOWS, THRESH_CACHE_PCT, THRESH_COST_USD, THRESH_CTX_PCT,
+    fmt_cost, fmt_cost_diff, fmt_pct, fmt_token_diff, fmt_tokens,
+    context_used, git_branch, icon_hi_bad, icon_hi_good, load_state,
+    parse_transcript, save_state, total_cost,
 )
 
 STATE_FILE = Path.home() / ".claude" / "statusline-state.json"
@@ -25,6 +27,8 @@ def main() -> None:
     model = data.get("model") or {}
     model_id = model.get("id", "claude-opus-4-7")
     model_display = model.get("display_name") or model_id
+    cwd = (data.get("workspace") or {}).get("current_dir", "")
+    branch = git_branch(cwd)
 
     turns = parse_transcript(transcript_path)
     if not turns:
@@ -52,13 +56,19 @@ def main() -> None:
     state[session_id] = {"ctx": ctx, "cost": cost}
     save_state(STATE_FILE, state)
 
-    parts = [
-        model_display,
-        f"ctx {fmt_tokens(ctx)}/{fmt_tokens(ctx_max)} ({fmt_pct(ctx_frac)}){fmt_token_diff(ctx_delta)}",
+    ctx_icon   = icon_hi_bad(ctx_frac * 100, *THRESH_CTX_PCT)
+    cache_icon = icon_hi_good(cache_frac * 100, *THRESH_CACHE_PCT)
+    cost_icon  = icon_hi_bad(cost, *THRESH_COST_USD)
+
+    parts = [model_display]
+    if branch:
+        parts.append(f"git:{branch}")
+    parts.extend([
+        f"{ctx_icon} ctx {fmt_tokens(ctx)}/{fmt_tokens(ctx_max)} ({fmt_pct(ctx_frac)}){fmt_token_diff(ctx_delta)}",
         f"turn in {fmt_tokens(turn_in)} out {fmt_tokens(turn_out)}",
-        f"cache {fmt_pct(cache_frac)} hit",
-        f"{fmt_cost(cost)} session{fmt_cost_diff(cost_delta)}",
-    ]
+        f"{cache_icon} cache {fmt_pct(cache_frac)} hit",
+        f"{cost_icon} {fmt_cost(cost)} session{fmt_cost_diff(cost_delta)}",
+    ])
     print(" \u00b7 ".join(parts))
 
 

@@ -1,0 +1,15 @@
+# Optional dependencies. The core statusline + rollup hook work with pure
+# stdlib Python 3.10+. These upgrade specific parts:
+
+# Faster JSON parsing for long transcripts (noticeable on 1000+-turn sessions).
+orjson>=3.9
+
+# Tier 2 summary-intent matching: fuzzy string match, no ML model, ~1ms.
+# Catches typos, paraphrases, word-order variants that the regex tier misses.
+rapidfuzz>=3.0
+
+# Tier 3 summary-intent matching: semantic embeddings, fully local after first
+# model download (~90MB). Only runs if CC_PULSE_SEMANTIC=1 is set, because the
+# 2-3s cold start runs on every invocation that reaches this tier.
+sentence-transformers>=2.2
+numpy>=1.24
